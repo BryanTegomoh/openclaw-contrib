@@ -259,7 +259,18 @@ export const cronHandlers: GatewayRequestHandlers = {
       return;
     }
     if (scope === "all") {
-      const jobs = await context.cron.list({ includeDisabled: true });
+      // Filter to only jobs owned by this caller to prevent cross-session name leakage
+      // (See #49175). We fall back to showing all if we cannot determine caller identity
+      // (preserves backward compatibility for CLI/legacy clients).
+      const allJobs = await context.cron.list({ includeDisabled: true });
+      const callerSessionKey = client?.connect?.sessionKey;
+      const jobs = callerSessionKey
+        ? allJobs.filter(
+            (job) =>
+              !job.sessionKey || job.sessionKey === callerSessionKey,
+          )
+        : allJobs;
+
       const jobNameById = Object.fromEntries(
         jobs
           .filter((job) => typeof job.id === "string" && typeof job.name === "string")
