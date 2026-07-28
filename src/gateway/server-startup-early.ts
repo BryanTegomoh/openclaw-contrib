@@ -151,7 +151,7 @@ export async function startGatewayEarlyRuntime(params: {
               () => {
                 params.broadcast("skills.changed", { reason: event.reason });
               },
-              (error) => {
+              (error: unknown) => {
                 params.log.warn(
                   `failed to refresh remote bins after skills change: ${String(error)}`,
                 );
