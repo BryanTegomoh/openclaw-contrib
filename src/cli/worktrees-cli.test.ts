@@ -2,8 +2,6 @@ import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { managedWorktrees } from "../agents/worktrees/service.js";
 import { resetConfigRuntimeState, setRuntimeConfigSnapshot } from "../config/config.js";
-import type { OpenClawConfig } from "../config/config.js";
-import { isManagedWorktreeOwnerActive } from "../gateway/worktree-owner-activity.js";
 import { defaultRuntime } from "../runtime.js";
 import { registerWorktreesCli } from "./worktrees-cli.js";
 
@@ -13,11 +11,8 @@ afterEach(() => {
 });
 
 describe("worktrees cli", () => {
-  it("passes session owner activity and configured limits to gc", async () => {
-    const cfg: OpenClawConfig = {
-      worktrees: { cleanup: { maxCount: 25, maxTotalSizeGb: 50 } },
-    };
-    setRuntimeConfigSnapshot(cfg, cfg);
+  it("passes session owner activity and built-in limits to gc", async () => {
+    setRuntimeConfigSnapshot({}, {});
     const gc = vi.spyOn(managedWorktrees, "gc").mockResolvedValue({
       removed: [],
       orphansDeleted: 0,
@@ -30,8 +25,8 @@ describe("worktrees cli", () => {
     await program.parseAsync(["worktrees", "gc"], { from: "user" });
 
     expect(gc).toHaveBeenCalledWith({
-      limits: { maxCount: 25, maxTotalSizeBytes: 50 * 1024 ** 3 },
-      isOwnerActive: isManagedWorktreeOwnerActive,
+      limits: {},
+      shouldProtectOwner: expect.any(Function),
     });
   });
 });

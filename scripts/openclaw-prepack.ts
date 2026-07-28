@@ -6,7 +6,8 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, delimiter, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { formatErrorMessage } from "../src/infra/errors.ts";
-import { writePackageDistInventory } from "./lib/package-dist-inventory.ts";
+import { readPositiveEnvInt } from "./lib/numeric-options.mjs";
+import { writePackageDistInventoryForPublish } from "./lib/package-dist-inventory.ts";
 import { preparePackageChangelog } from "./package-changelog.mjs";
 import { createPnpmRunnerSpawnSpec } from "./pnpm-runner.mjs";
 const FULL_GIT_COMMIT_RE = /^[0-9a-f]{40}$/iu;
@@ -175,23 +176,8 @@ function ensurePreparedArtifacts(): void {
   process.exit(1);
 }
 
-function positiveEnvInt(name: string, env: NodeJS.ProcessEnv, fallback: number): number {
-  const raw = env[name]?.trim();
-  if (raw === undefined || raw === "") {
-    return fallback;
-  }
-  if (!/^[1-9]\d*$/u.test(raw)) {
-    throw new Error(`invalid ${name}: ${raw}`);
-  }
-  const value = Number(raw);
-  if (!Number.isSafeInteger(value)) {
-    throw new Error(`invalid ${name}: ${raw}`);
-  }
-  return value;
-}
-
 export function resolvePrepackCommandTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
-  return positiveEnvInt(
+  return readPositiveEnvInt(
     "OPENCLAW_PREPACK_COMMAND_TIMEOUT_MS",
     env,
     DEFAULT_PREPACK_COMMAND_TIMEOUT_MS,
@@ -292,7 +278,7 @@ function runBuildSmoke(): void {
 }
 
 async function writeDistInventory(): Promise<void> {
-  await writePackageDistInventory(process.cwd());
+  await writePackageDistInventoryForPublish(process.cwd());
 }
 
 export async function preparePrepackArtifacts(env: NodeJS.ProcessEnv = process.env): Promise<void> {

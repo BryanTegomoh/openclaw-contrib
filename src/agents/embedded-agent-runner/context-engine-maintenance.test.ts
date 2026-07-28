@@ -8,14 +8,14 @@ import { enqueueCommandInLane, markGatewayDraining } from "../../process/command
 import * as commandQueueModule from "../../process/command-queue.js";
 import { resetCommandQueueStateForTest } from "../../process/command-queue.test-support.js";
 import { createQueuedTaskRun as createQueuedTaskRunOrNull } from "../../tasks/task-executor.js";
-import { getTaskFlowById, resetTaskFlowRegistryForTests } from "../../tasks/task-flow-registry.js";
+import { getTaskFlowById } from "../../tasks/task-flow-registry.js";
+import { getTaskById, listTasksForOwnerKey } from "../../tasks/task-registry.js";
+import type { TaskRecord } from "../../tasks/task-registry.types.js";
 import {
-  getTaskById,
-  listTasksForOwnerKey,
+  resetTaskFlowRegistryForTests,
   resetTaskRegistryForTests,
   setTaskRegistryDeliveryRuntimeForTests,
-} from "../../tasks/task-registry.js";
-import type { TaskRecord } from "../../tasks/task-registry.types.js";
+} from "../../tasks/task-runtime.test-helpers.js";
 import { withStateDirEnv } from "../../test-helpers/state-dir-env.js";
 import { castAgentMessage } from "../test-helpers/agent-message-fixtures.js";
 import { resolveSessionLane } from "./lanes.js";
@@ -30,8 +30,8 @@ const rewriteTranscriptEntriesInRuntimeTranscriptMock = vi.fn(async (_params?: u
   bytesFreed: 123,
   rewrittenEntries: 2,
 }));
-let createDeferredTurnMaintenanceAbortSignal: typeof import("./context-engine-maintenance.js").createDeferredTurnMaintenanceAbortSignal;
-let resetDeferredTurnMaintenanceStateForTest: typeof import("./context-engine-maintenance.js").resetDeferredTurnMaintenanceStateForTest;
+let createDeferredTurnMaintenanceAbortSignal: typeof import("./context-engine-maintenance.test-support.js").createDeferredTurnMaintenanceAbortSignal;
+let resetDeferredTurnMaintenanceStateForTest: typeof import("./context-engine-maintenance.test-support.js").resetDeferredTurnMaintenanceStateForTest;
 let waitForDeferredTurnMaintenanceForSession: typeof import("./context-engine-maintenance.js").waitForDeferredTurnMaintenanceForSession;
 
 function createQueuedTaskRun(params: Parameters<typeof createQueuedTaskRunOrNull>[0]): TaskRecord {
@@ -111,12 +111,10 @@ vi.mock("./transcript-rewrite.js", () => ({
 async function loadFreshContextEngineMaintenanceModuleForTest() {
   // The module owns singleton deferred-maintenance state, so reload between
   // cases before asserting abort or queue behavior.
-  ({
-    createDeferredTurnMaintenanceAbortSignal,
-    resetDeferredTurnMaintenanceStateForTest,
-    runContextEngineMaintenance,
-    waitForDeferredTurnMaintenanceForSession,
-  } = await import("./context-engine-maintenance.js"));
+  ({ runContextEngineMaintenance, waitForDeferredTurnMaintenanceForSession } =
+    await import("./context-engine-maintenance.js"));
+  ({ createDeferredTurnMaintenanceAbortSignal, resetDeferredTurnMaintenanceStateForTest } =
+    await import("./context-engine-maintenance.test-support.js"));
   resetDeferredTurnMaintenanceStateForTest();
 }
 
@@ -243,7 +241,7 @@ describe("runContextEngineMaintenance", () => {
     });
   });
 
-  it("forces background maintenance rewrites through the session file even when a session manager exists", async () => {
+  it("forces background maintenance rewrites through the runtime target even when a session manager exists", async () => {
     const maintain = vi.fn(async (params?: unknown) => {
       await (
         params as { runtimeContext?: ContextEngineRuntimeContext } | undefined
@@ -279,19 +277,27 @@ describe("runContextEngineMaintenance", () => {
       },
       sessionId: "session-background-file-rewrite",
       sessionKey: "agent:main:session-background-file-rewrite",
+      sessionTarget: {
+        agentId: "custom-agent",
+        sessionId: "custom-session",
+        sessionKey: "agent:custom-agent:custom-session",
+        storePath: "/tmp/custom-agent.sqlite",
+      },
       sessionFile: "/tmp/session-background-file-rewrite.jsonl",
       reason: "turn",
       executionMode: "background",
       sessionManager,
-      config: { session: { writeLock: { acquireTimeoutMs: 75_000 } } },
+      config: {},
     });
 
     expect(rewriteTranscriptEntriesInSessionManagerMock).not.toHaveBeenCalled();
     expect(rewriteTranscriptEntriesInRuntimeTranscriptMock).toHaveBeenCalledWith({
       scope: {
-        sessionId: "session-background-file-rewrite",
-        sessionKey: "agent:main:session-background-file-rewrite",
+        agentId: "custom-agent",
+        sessionId: "custom-session",
+        sessionKey: "agent:custom-agent:custom-session",
         sessionFile: "/tmp/session-background-file-rewrite.jsonl",
+        storePath: "/tmp/custom-agent.sqlite",
       },
       request: {
         replacements: [
@@ -305,7 +311,6 @@ describe("runContextEngineMaintenance", () => {
           },
         ],
       },
-      config: { session: { writeLock: { acquireTimeoutMs: 75_000 } } },
     });
   });
 
@@ -438,7 +443,7 @@ describe("runContextEngineMaintenance", () => {
             tokenBudget: 2048,
             currentTokenCount: 1536,
           },
-          config: { session: { writeLock: { acquireTimeoutMs: 91_000 } } },
+          config: {},
         });
 
         expect(result).toBeUndefined();
@@ -462,7 +467,6 @@ describe("runContextEngineMaintenance", () => {
                 },
               ],
             },
-            config: { session: { writeLock: { acquireTimeoutMs: 91_000 } } },
           }),
         );
 

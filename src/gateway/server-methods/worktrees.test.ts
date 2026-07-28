@@ -2,7 +2,6 @@ import { expectDefined } from "@openclaw/normalization-core";
 import { describe, expect, it, vi } from "vitest";
 import { WorktreeSnapshotError } from "../../agents/worktrees/service.js";
 import type { ManagedWorktreeRecord } from "../../agents/worktrees/types.js";
-import { isManagedWorktreeOwnerActive } from "../worktree-owner-activity.js";
 import { createWorktreesHandlers } from "./worktrees.js";
 
 const record: ManagedWorktreeRecord = {
@@ -73,7 +72,7 @@ describe("worktrees gateway methods", () => {
     ]);
     expect(service.gc).toHaveBeenCalledWith({
       limits: {},
-      isOwnerActive: isManagedWorktreeOwnerActive,
+      shouldProtectOwner: expect.any(Function),
     });
 
     expect(service.create).toHaveBeenCalledWith({
@@ -106,6 +105,17 @@ describe("worktrees gateway methods", () => {
     );
     expect(adminResponse?.[0]).toBe(true);
     expect(service.listRepositoryBranches).toHaveBeenCalledWith("/anywhere");
+
+    const statusResponse = await call(
+      handlers,
+      "worktrees.branches",
+      { repoRoot: "/anywhere", includeRepositoryStatus: true },
+      { client: adminClient, context: emptyConfigContext },
+    );
+    expect(statusResponse?.[0]).toBe(true);
+    expect(service.listRepositoryBranches).toHaveBeenCalledWith("/anywhere", {
+      includeRepositoryStatus: true,
+    });
 
     // Write scope cannot probe arbitrary host paths for branch names.
     const denied = await call(
@@ -150,21 +160,17 @@ describe("worktrees gateway methods", () => {
     }
   });
 
-  it("passes configured cleanup limits to gc", async () => {
+  it("uses the built-in cleanup policy for gc", async () => {
     const service = {
       gc: vi.fn(async () => ({ removed: [], orphansDeleted: 0, snapshotsPruned: 0 })),
     };
     const handlers = createWorktreesHandlers(service as never);
-    const context = {
-      getRuntimeConfig: () => ({
-        worktrees: { cleanup: { maxCount: 25, maxTotalSizeGb: 50 } },
-      }),
-    };
+    const context = { getRuntimeConfig: () => ({}) };
     const response = await call(handlers, "worktrees.gc", {}, { context });
     expect(response?.[0]).toBe(true);
     expect(service.gc).toHaveBeenCalledWith({
-      limits: { maxCount: 25, maxTotalSizeBytes: 50 * 1024 ** 3 },
-      isOwnerActive: expect.any(Function),
+      limits: {},
+      shouldProtectOwner: expect.any(Function),
     });
   });
 
