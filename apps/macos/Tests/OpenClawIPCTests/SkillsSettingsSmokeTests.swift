@@ -50,6 +50,10 @@ private func makeSkillsChangedPush() -> GatewayPush {
     .event(EventFrame(type: "event", event: "skills.changed"))
 }
 
+private enum SkillsStatusLoadError: Error {
+    case unavailable
+}
+
 @Suite(.serialized)
 @MainActor
 struct SkillsSettingsSmokeTests {
@@ -284,6 +288,54 @@ struct SkillsSettingsSmokeTests {
 
         await model.refreshIfNeeded()
         #expect(loadCount == 1)
+    }
+
+    @Test func `skills changed retries a failed initial load`() async {
+        var loadCount = 0
+        let model = SkillsSettingsModel {
+            loadCount += 1
+            if loadCount == 1 {
+                throw SkillsStatusLoadError.unavailable
+            }
+            return makeSkillsStatusReport([])
+        }
+
+        await model.refreshIfNeeded()
+        #expect(model.error != nil)
+
+        model.handleGatewayPush(makeSkillsChangedPush())
+        while loadCount < 2 || model.isLoading {
+            await Task.yield()
+        }
+
+        #expect(loadCount == 2)
+        #expect(model.error == nil)
+    }
+
+    @Test func `queued success clears the failed refresh error`() async {
+        var firstLoad: CheckedContinuation<SkillsStatusReport, Error>?
+        var loadCount = 0
+        let model = SkillsSettingsModel {
+            loadCount += 1
+            if loadCount == 1 {
+                return try await withCheckedThrowingContinuation { continuation in
+                    firstLoad = continuation
+                }
+            }
+            return makeSkillsStatusReport([])
+        }
+
+        let initialRefresh = Task { await model.refreshIfNeeded() }
+        while firstLoad == nil {
+            await Task.yield()
+        }
+        model.handleGatewayPush(makeSkillsChangedPush())
+        firstLoad?.resume(throwing: SkillsStatusLoadError.unavailable)
+        await initialRefresh.value
+
+        #expect(loadCount == 2)
+        #expect(!model.isLoading)
+        #expect(model.error == nil)
     }
 
     @Test func `gateway sequence gap refreshes loaded skills`() async {

@@ -749,6 +749,7 @@ final class SkillsSettingsModel {
     var error: String?
     var statusMessage: String?
     private var hasLoaded = false
+    private var hasAttemptedLoad = false
     private var busySkills: Set<String> = []
     private var pendingForcedRefresh = false
     private var gatewayRefreshTask: Task<Void, Never>?
@@ -786,7 +787,7 @@ final class SkillsSettingsModel {
         }
         // The view subscribes before launching its initial request. If that request
         // has not started yet, it will observe this invalidation without a duplicate.
-        guard self.hasLoaded || self.isLoading else { return }
+        guard self.hasAttemptedLoad || self.isLoading else { return }
         self.pendingForcedRefresh = true
         self.startPendingGatewayRefreshIfNeeded()
     }
@@ -813,6 +814,7 @@ final class SkillsSettingsModel {
         if self.hasLoaded, !force {
             return
         }
+        self.hasAttemptedLoad = true
         self.isLoading = true
         defer { self.isLoading = false }
 

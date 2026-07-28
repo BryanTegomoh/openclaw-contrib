@@ -38171,7 +38171,7 @@
     },
     {
       "kind": "conditional-branch",
-      "line": 867,
+      "line": 869,
       "path": "apps/macos/Sources/OpenClaw/SkillsSettings.swift",
       "source": "Skill disabled",
       "surface": "apple",
@@ -38179,7 +38179,7 @@
     },
     {
       "kind": "conditional-branch",
-      "line": 867,
+      "line": 869,
       "path": "apps/macos/Sources/OpenClaw/SkillsSettings.swift",
       "source": "Skill enabled",
       "surface": "apple",
@@ -38187,7 +38187,7 @@
     },
     {
       "kind": "ui-named-argument",
-      "line": 945,
+      "line": 947,
       "path": "apps/macos/Sources/OpenClaw/SkillsSettings.swift",
       "source": "Bundled",
       "surface": "apple",
