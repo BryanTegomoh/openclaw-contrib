@@ -1,3 +1,4 @@
+import OpenClawKit
 import OpenClawProtocol
 import Testing
 @testable import OpenClaw
@@ -43,6 +44,10 @@ private func makeSkillsStatusReport(_ skills: [SkillStatus]) -> SkillsStatusRepo
         workspaceDir: "/tmp/workspace",
         managedSkillsDir: "/tmp/skills",
         skills: skills)
+}
+
+private func makeSkillsChangedPush() -> GatewayPush {
+    .event(EventFrame(type: "event", event: "skills.changed"))
 }
 
 @Suite(.serialized)
@@ -153,7 +158,7 @@ struct SkillsSettingsSmokeTests {
         _ = view.body
     }
 
-    @Test func `local node reconnect forces a loaded skills status refresh`() async throws {
+    @Test func `skills changed event forces a loaded status refresh`() async {
         var reports = [
             makeSkillsStatusReport([
                 makeSkillStatus(
@@ -190,47 +195,35 @@ struct SkillsSettingsSmokeTests {
         #expect(loadCount == 1)
         #expect(model.skills.first?.eligible == false)
 
-        await model.refreshAfterLocalNodeReconnect()
+        model.handleGatewayPush(makeSkillsChangedPush())
+        while loadCount < 2 || model.isLoading {
+            await Task.yield()
+        }
 
         #expect(loadCount == 2)
         #expect(model.skills.first?.eligible == true)
         #expect(model.skills.first?.missing.bins == [])
     }
 
-    @Test func `local node reconnect queues refresh during initial skills load`() async throws {
-        var firstLoad: CheckedContinuation<SkillsStatusReport, Never>?
-        var loadCount = 0
+    @Test func `skills changed event queues refresh under one loading lease`() async {
+        var pendingLoads: [CheckedContinuation<SkillsStatusReport, Never>] = []
         let model = SkillsSettingsModel {
-            loadCount += 1
-            if loadCount == 1 {
-                return await withCheckedContinuation { continuation in
-                    firstLoad = continuation
-                }
+            await withCheckedContinuation { continuation in
+                pendingLoads.append(continuation)
             }
-            return makeSkillsStatusReport([
-                makeSkillStatus(
-                    name: "Paprika",
-                    description: "Ready after node reconnect",
-                    source: "openclaw-workspace",
-                    filePath: "/tmp/skills/paprika",
-                    skillKey: "paprika",
-                    emoji: "P",
-                    eligible: true,
-                    requirements: SkillRequirements(bins: ["paprika"], env: [], config: []),
-                    missing: SkillMissing(bins: [], env: [], config: [])),
-            ])
         }
 
         let initialRefresh = Task { await model.refreshIfNeeded() }
-        while firstLoad == nil {
+        while pendingLoads.count < 1 {
             await Task.yield()
         }
 
-        await model.refreshAfterLocalNodeReconnect()
+        model.handleGatewayPush(makeSkillsChangedPush())
 
-        #expect(loadCount == 1)
+        #expect(pendingLoads.count == 1)
+        #expect(model.isLoading)
 
-        firstLoad?.resume(returning: makeSkillsStatusReport([
+        pendingLoads.removeFirst().resume(returning: makeSkillsStatusReport([
             makeSkillStatus(
                 name: "Paprika",
                 description: "Missing local binary",
@@ -242,24 +235,71 @@ struct SkillsSettingsSmokeTests {
                 requirements: SkillRequirements(bins: ["paprika"], env: [], config: []),
                 missing: SkillMissing(bins: ["paprika"], env: [], config: [])),
         ]))
+        while pendingLoads.count < 1 {
+            await Task.yield()
+        }
+
+        #expect(model.isLoading)
+        pendingLoads.removeFirst().resume(returning: makeSkillsStatusReport([
+            makeSkillStatus(
+                name: "Paprika",
+                description: "Ready after node reconnect",
+                source: "openclaw-workspace",
+                filePath: "/tmp/skills/paprika",
+                skillKey: "paprika",
+                emoji: "P",
+                eligible: true,
+                requirements: SkillRequirements(bins: ["paprika"], env: [], config: []),
+                missing: SkillMissing(bins: [], env: [], config: [])),
+        ]))
         await initialRefresh.value
 
-        #expect(loadCount == 2)
+        #expect(!model.isLoading)
         #expect(model.skills.first?.eligible == true)
         #expect(model.skills.first?.missing.bins == [])
     }
 
-    @Test func `local node reconnect does not duplicate initial skills load`() async throws {
+    @Test func `unrelated gateway event does not load skills`() {
         var loadCount = 0
         let model = SkillsSettingsModel {
             loadCount += 1
             return makeSkillsStatusReport([])
         }
 
-        await model.refreshAfterLocalNodeReconnect()
+        model.handleGatewayPush(.event(EventFrame(type: "event", event: "health")))
 
         #expect(loadCount == 0)
         #expect(model.skills.isEmpty)
+    }
+
+    @Test func `skills changed before initial load does not duplicate it`() async {
+        var loadCount = 0
+        let model = SkillsSettingsModel {
+            loadCount += 1
+            return makeSkillsStatusReport([])
+        }
+
+        model.handleGatewayPush(makeSkillsChangedPush())
+        #expect(loadCount == 0)
+
+        await model.refreshIfNeeded()
+        #expect(loadCount == 1)
+    }
+
+    @Test func `gateway sequence gap refreshes loaded skills`() async {
+        var loadCount = 0
+        let model = SkillsSettingsModel {
+            loadCount += 1
+            return makeSkillsStatusReport([])
+        }
+        await model.refreshIfNeeded()
+
+        model.handleGatewayPush(.seqGap(expected: 2, received: 3))
+        while loadCount < 2 || model.isLoading {
+            await Task.yield()
+        }
+
+        #expect(loadCount == 2)
     }
 
     @Test func `skills settings exercises private views`() {

@@ -10,7 +10,6 @@ struct SkillsSettings: View {
     @State private var section: SkillsSection = .installed
     @State private var searchText = ""
     @State private var filter: SkillsFilter = .all
-    @State private var didScheduleInitialRefresh = false
 
     init(state: AppState = AppStateStore.shared, model: SkillsSettingsModel = SkillsSettingsModel()) {
         self.state = state
@@ -40,13 +39,15 @@ struct SkillsSettings: View {
             .settingsDetailContent()
         }
         .task {
-            guard !self.didScheduleInitialRefresh else { return }
-            self.didScheduleInitialRefresh = true
-            await Task.yield()
-            await self.model.refreshIfNeeded()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .openclawLocalNodeDidConnect)) { _ in
-            Task { await self.model.refreshAfterLocalNodeReconnect() }
+            // Subscribe before the first request so a remote-node invalidation cannot
+            // overtake the response and leave stale eligibility visible.
+            let pushes = await GatewayConnection.shared.subscribe()
+            let initialRefresh = Task { await self.model.refreshIfNeeded() }
+            defer { initialRefresh.cancel() }
+            for await push in pushes {
+                if Task.isCancelled { return }
+                self.model.handleGatewayPush(push)
+            }
         }
         .sheet(item: self.$envEditor) { editor in
             EnvEditorView(editor: editor) { value in
@@ -750,6 +751,7 @@ final class SkillsSettingsModel {
     private var hasLoaded = false
     private var busySkills: Set<String> = []
     private var pendingForcedRefresh = false
+    private var gatewayRefreshTask: Task<Void, Never>?
     private let loadSkillsStatus: () async throws -> SkillsStatusReport
 
     init() {
@@ -773,13 +775,32 @@ final class SkillsSettingsModel {
         await self.refresh()
     }
 
-    func refreshAfterLocalNodeReconnect() async {
-        if self.isLoading {
-            self.pendingForcedRefresh = true
+    func handleGatewayPush(_ push: GatewayPush) {
+        switch push {
+        case let .event(event) where event.event == "skills.changed":
+            break
+        case .seqGap:
+            break
+        default:
             return
         }
-        guard self.hasLoaded else { return }
-        await self.refresh(force: true)
+        // The view subscribes before launching its initial request. If that request
+        // has not started yet, it will observe this invalidation without a duplicate.
+        guard self.hasLoaded || self.isLoading else { return }
+        self.pendingForcedRefresh = true
+        self.startPendingGatewayRefreshIfNeeded()
+    }
+
+    private func startPendingGatewayRefreshIfNeeded() {
+        guard self.pendingForcedRefresh, !self.isLoading, self.gatewayRefreshTask == nil else { return }
+        self.gatewayRefreshTask = Task { [weak self] in
+            guard let self else { return }
+            await self.refresh(force: true)
+            self.gatewayRefreshTask = nil
+            // An invalidation can arrive after the drain ends but before this task
+            // releases its lease; start a successor instead of losing that signal.
+            self.startPendingGatewayRefreshIfNeeded()
+        }
     }
 
     func refresh(force: Bool = false) async {
@@ -792,15 +813,16 @@ final class SkillsSettingsModel {
         if self.hasLoaded, !force {
             return
         }
-        await self.runRefresh()
-        while self.pendingForcedRefresh {
+        self.isLoading = true
+        defer { self.isLoading = false }
+
+        repeat {
             self.pendingForcedRefresh = false
             await self.runRefresh()
-        }
+        } while self.pendingForcedRefresh
     }
 
     private func runRefresh() async {
-        self.isLoading = true
         self.error = nil
         do {
             let report = try await self.loadSkillsStatus()
@@ -809,7 +831,6 @@ final class SkillsSettingsModel {
         } catch {
             self.error = error.localizedDescription
         }
-        self.isLoading = false
     }
 
     func acceptInstalledSkills(_ skills: [SkillStatus]) {

@@ -294,6 +294,14 @@ function listCurrentRemoteConnectionKeys(): ReadonlySet<string> | undefined {
   );
 }
 
+function contributesRemoteSkillEligibility(node: RemoteNodeRecord | undefined): boolean {
+  return Boolean(
+    node?.connected &&
+    isMacPlatform(node.platform, node.deviceFamily) &&
+    supportsSystemRun(node.commands),
+  );
+}
+
 export function setSkillsRemoteRegistry(registry: NodeRegistry | null) {
   remoteRegistry = registry;
   setRemoteSkillConnectionReconciler(registry ? () => listCurrentRemoteConnectionKeys() : null);
@@ -352,6 +360,7 @@ export function recordRemoteNodeInfo(node: {
   pairingGeneration?: string;
 }) {
   const existing = remoteNodes.get(node.nodeId);
+  const wasEligible = contributesRemoteSkillEligibility(existing);
   const pairingGenerationChanged = Boolean(
     existing && existing.pairingGeneration !== node.pairingGeneration,
   );
@@ -364,6 +373,11 @@ export function recordRemoteNodeInfo(node: {
     remoteNodeProbeStates.delete(node.nodeId);
   }
   upsertNode({ ...node, connected: true }, { pairingGenerationAuthoritative: true });
+  if (wasEligible !== contributesRemoteSkillEligibility(remoteNodes.get(node.nodeId))) {
+    // Connectivity and command-surface changes affect OS-only skills even before
+    // the delayed bin probe; the probe emits a second invalidation if bins change.
+    bumpSkillsSnapshotVersion({ reason: "remote-node" });
+  }
   recordRemoteSkillNodeInfo({
     nodeId: node.nodeId,
     connId: node.connId,
