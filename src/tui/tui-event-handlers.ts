@@ -163,6 +163,8 @@ export function createEventHandlers(context: EventHandlerContext) {
     forgetLocalRunId,
     clearLocalRunIds,
     clearLocalBtwRunIds,
+    isLocalBtwRunId,
+    forgetLocalBtwRunId,
     streamingWatchdogMs: context.streamingWatchdogMs,
     localMode,
   });
@@ -346,7 +348,6 @@ export function createEventHandlers(context: EventHandlerContext) {
       });
     }
     if (evt.state === "aborted") {
-      forgetLocalBtwRunId?.(evt.runId);
       const wasActiveRun = state.activeChatRunId === evt.runId;
       // Determine content from the message and stream, not the user-visible
       // fallbacks: attachment-only aborts remain cancellation diagnostics.
@@ -367,7 +368,6 @@ export function createEventHandlers(context: EventHandlerContext) {
       });
     }
     if (evt.state === "error") {
-      forgetLocalBtwRunId?.(evt.runId);
       renderTerminalRunError({
         runId: evt.runId,
         errorMessage: evt.errorMessage ?? "unknown",

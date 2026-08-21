@@ -2386,6 +2386,21 @@ describe("tui-event-handlers: handleAgentEvent", () => {
     }
   });
 
+  it("clears stale streaming when an inactive ordinary abort leaves no tracked run", () => {
+    const { state, setActivityStatus, handleChatEvent } = createHandlersHarness({
+      state: { activeChatRunId: "run-stale", activityStatus: "streaming" },
+    });
+
+    handleChatEvent({
+      runId: "run-aborted",
+      state: "aborted",
+    });
+
+    expect(state.activeChatRunId).toBeNull();
+    expect(state.activityStatus).toBe("idle");
+    expect(setActivityStatus).toHaveBeenCalledWith("idle");
+  });
+
   it("does not force idle for an inactive final while another tracked run is active", () => {
     const { state, setActivityStatus, handleChatEvent } = createConcurrentRunHarness("partial");
     state.activityStatus = "streaming";

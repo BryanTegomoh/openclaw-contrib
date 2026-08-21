@@ -31,6 +31,8 @@ type TuiRunLifecycleContext = {
   isLocalRunId?: (runId: string) => boolean;
   forgetLocalRunId?: (runId: string) => void;
   clearLocalRunIds?: () => void;
+  isLocalBtwRunId?: (runId: string) => boolean;
+  forgetLocalBtwRunId?: (runId: string) => void;
   clearLocalBtwRunIds?: () => void;
   streamingWatchdogMs?: number;
   localMode?: boolean;
@@ -49,6 +51,8 @@ export function createTuiRunLifecycle(context: TuiRunLifecycleContext) {
     isLocalRunId,
     forgetLocalRunId,
     clearLocalRunIds,
+    isLocalBtwRunId,
+    forgetLocalBtwRunId,
     clearLocalBtwRunIds,
     localMode,
   } = context;
@@ -306,6 +310,8 @@ export function createTuiRunLifecycle(context: TuiRunLifecycleContext) {
     wasActiveRun: boolean;
     status: "aborted" | "error";
   }) => {
+    const preserveInactiveStreaming = isLocalBtwRunId?.(params.runId) ?? false;
+    forgetLocalBtwRunId?.(params.runId);
     runCoordinator.noteCompletedRun(params.runId);
     runCoordinator.dropSessionRun(params.runId);
     clearActiveRunIfMatch(params.runId);
@@ -315,8 +321,13 @@ export function createTuiRunLifecycle(context: TuiRunLifecycleContext) {
       if (params.wasActiveRun) {
         setActivityStatus(params.status);
         clearStreamingWatchdog();
-      } else if (streamingWatchdogRunId === params.runId) {
-        clearStreamingWatchdog();
+      } else {
+        if (streamingWatchdogRunId === params.runId) {
+          clearStreamingWatchdog();
+        }
+        if (!preserveInactiveStreaming) {
+          clearStaleStreamingIfNoTrackedRunRemains();
+        }
       }
     }
     void refreshSessionInfo?.();
