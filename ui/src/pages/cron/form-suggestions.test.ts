@@ -56,6 +56,7 @@ describe("buildCronSuggestions", () => {
     cron.cronForm.deliveryChannel = "discord";
     cron.cronJobs = [
       cronJob("valid-telegram", "telegram", "-100123"),
+      cronJob("valid-telegram-collision", "telegram", "alerts"),
       cronJob("legacy-telegram-account", "telegram", "gmail-cleaner"),
       cronJob("valid-discord", "discord", "team-room"),
     ];
@@ -80,6 +81,6 @@ describe("buildCronSuggestions", () => {
     });
 
     expect(suggestions.accountTargets).toEqual(["primary", "alerts"]);
-    expect(suggestions.deliveryToSuggestions).toEqual(["-100123", "team-room"]);
+    expect(suggestions.deliveryToSuggestions).toEqual(["-100123", "alerts", "team-room"]);
   });
 });

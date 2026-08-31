@@ -63,7 +63,6 @@ export function buildCronSuggestions(params: {
     [...accountTargetsByChannel].map(([channelId, targets]) => [channelId, new Set(targets)]),
   );
   const allAccountTargetSet = new Set(allAccountTargets);
-  const accountTargetSet = new Set(accountTargets);
   const deliveryTargets = normalizeSortedUniqueTrimmedStringList(
     params.cron.cronJobs.map((job) => {
       const target = typeof job.delivery?.to === "string" ? job.delivery.to.trim() : "";
@@ -72,7 +71,7 @@ export function buildCronSuggestions(params: {
         deliveryChannel === "last"
           ? allAccountTargetSet
           : accountTargetSetsByChannel.get(deliveryChannel);
-      return accountTargetSet.has(target) || deliveryAccountTargetSet?.has(target) ? "" : target;
+      return deliveryAccountTargetSet?.has(target) ? "" : target;
     }),
   );
   return {
