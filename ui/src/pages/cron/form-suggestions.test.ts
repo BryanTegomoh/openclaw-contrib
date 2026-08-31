@@ -9,20 +9,27 @@ describe("buildCronSuggestions", () => {
     const cron = createInitialCronState();
     cron.cronForm.deliveryMode = "announce";
     cron.cronForm.deliveryChannel = "telegram";
+    const job = {
+      id: "nightly",
+      name: "Nightly",
+      enabled: true,
+      createdAtMs: 0,
+      updatedAtMs: 0,
+      schedule: { kind: "every", everyMs: 60_000 },
+      sessionTarget: "isolated",
+      wakeMode: "now",
+      payload: { kind: "agentTurn", message: "summarize" },
+      delivery: { mode: "announce", channel: "telegram", to: "-100123" },
+      state: {},
+    } satisfies CronJob;
     cron.cronJobs = [
+      job,
       {
-        id: "nightly",
-        name: "Nightly",
-        enabled: true,
-        createdAtMs: 0,
-        updatedAtMs: 0,
-        schedule: { kind: "every", everyMs: 60_000 },
-        sessionTarget: "isolated",
-        wakeMode: "now",
-        payload: { kind: "agentTurn", message: "summarize" },
-        delivery: { mode: "announce", channel: "telegram", to: "-100123" },
-        state: {},
-      } satisfies CronJob,
+        ...job,
+        id: "legacy-account-target",
+        name: "Legacy account target",
+        delivery: { ...job.delivery, to: "gmail-cleaner" },
+      },
     ];
     const channels = {
       channelsSnapshot: {
