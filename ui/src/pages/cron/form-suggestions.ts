@@ -56,10 +56,7 @@ export function buildCronSuggestions(params: {
     .filter((value): value is string => typeof value === "string")
     .map((value) => value.trim())
     .filter(Boolean);
-  const deliveryTargets = normalizeSortedUniqueTrimmedStringList([
-    ...jobTargets,
-    ...accountTargets,
-  ]);
+  const deliveryTargets = normalizeSortedUniqueTrimmedStringList(jobTargets);
   return {
     agentSuggestions,
     modelSuggestions,
