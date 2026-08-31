@@ -44,21 +44,36 @@ export function buildCronSuggestions(params: {
         : "";
     }),
   ]);
-  const jobTargets = params.cron.cronJobs
-    .map((job) => (typeof job.delivery?.to === "string" ? job.delivery.to.trim() : ""))
-    .filter(Boolean);
-  const accountTargets = (
-    channel === "last"
-      ? Object.values(params.channels.channelsSnapshot?.channelAccounts ?? {}).flat()
-      : (params.channels.channelsSnapshot?.channelAccounts?.[channel] ?? [])
-  )
-    .flatMap((account) => [account.accountId, account.name])
-    .filter((value): value is string => typeof value === "string")
-    .map((value) => value.trim())
-    .filter(Boolean);
+  const accountTargetsByChannel = new Map(
+    Object.entries(params.channels.channelsSnapshot?.channelAccounts ?? {}).map(
+      ([channelId, accounts]) => [
+        channelId,
+        accounts
+          .flatMap((account) => [account.accountId, account.name])
+          .filter((value): value is string => typeof value === "string")
+          .map((value) => value.trim())
+          .filter(Boolean),
+      ],
+    ),
+  );
+  const allAccountTargets = [...accountTargetsByChannel.values()].flat();
+  const accountTargets =
+    channel === "last" ? allAccountTargets : (accountTargetsByChannel.get(channel) ?? []);
+  const accountTargetSetsByChannel = new Map(
+    [...accountTargetsByChannel].map(([channelId, targets]) => [channelId, new Set(targets)]),
+  );
+  const allAccountTargetSet = new Set(allAccountTargets);
   const accountTargetSet = new Set(accountTargets);
   const deliveryTargets = normalizeSortedUniqueTrimmedStringList(
-    jobTargets.filter((target) => !accountTargetSet.has(target)),
+    params.cron.cronJobs.map((job) => {
+      const target = typeof job.delivery?.to === "string" ? job.delivery.to.trim() : "";
+      const deliveryChannel = job.delivery?.channel?.trim() || "last";
+      const deliveryAccountTargetSet =
+        deliveryChannel === "last"
+          ? allAccountTargetSet
+          : accountTargetSetsByChannel.get(deliveryChannel);
+      return accountTargetSet.has(target) || deliveryAccountTargetSet?.has(target) ? "" : target;
+    }),
   );
   return {
     agentSuggestions,
