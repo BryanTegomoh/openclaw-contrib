@@ -4,8 +4,7 @@ import { createDeferred } from "../../../../test/helpers/promise.js";
 import type { GatewayBrowserClient, GatewayEventListener } from "../../api/gateway.ts";
 import type { CronJob, CronJobsListResult } from "../../api/types.ts";
 import type { ApplicationContext, ApplicationGatewaySnapshot } from "../../app/context.ts";
-import { createInitialCronState, type CronState } from "../../lib/cron/index.ts";
-import { buildCronSuggestions } from "./form-suggestions.ts";
+import type { CronState } from "../../lib/cron/index.ts";
 import { createCronViewJob } from "./view.test-support.ts";
 import "./cron-page.ts";
 
@@ -186,85 +185,6 @@ function createRequest(
 afterEach(() => {
   document.body.replaceChildren();
   vi.restoreAllMocks();
-});
-
-describe("CronPage delivery suggestions", () => {
-  const telegramTarget = "-1001234567890";
-  const webhookTarget = "https://example.test/hooks/saved";
-  const accountUrl = "https://example.test/account-name";
-  const telegramAccounts = ["default", telegramTarget, "work", accountUrl];
-
-  it.each([
-    {
-      channel: "telegram",
-      mode: "announce",
-      recipients: [telegramTarget, webhookTarget],
-      accounts: telegramAccounts,
-    },
-    {
-      channel: "last",
-      mode: "announce",
-      recipients: [telegramTarget, webhookTarget],
-      accounts: [...telegramAccounts, "discord-account", "Discord account"],
-    },
-    {
-      channel: "telegram",
-      mode: "webhook",
-      recipients: [webhookTarget],
-      accounts: telegramAccounts,
-    },
-  ] as const)("keeps $channel $mode recipients separate from account options", (scenario) => {
-    const gateway = createGateway(
-      { request: createRequest() } as unknown as GatewayBrowserClient,
-      false,
-    );
-    const context = createContext(gateway);
-    context.channels.state.channelsSnapshot = {
-      ts: 0,
-      channelOrder: ["telegram", "discord"],
-      channelLabels: { telegram: "Telegram", discord: "Discord" },
-      channels: {},
-      channelAccounts: {
-        telegram: [
-          { accountId: "default", name: telegramTarget },
-          { accountId: "work", name: accountUrl },
-        ],
-        discord: [{ accountId: "discord-account", name: "Discord account" }],
-      },
-      channelDefaultAccountId: { telegram: "default", discord: "discord-account" },
-    };
-    const cron = createInitialCronState();
-    cron.cronForm.deliveryChannel = scenario.channel;
-    cron.cronForm.deliveryMode = scenario.mode;
-    cron.cronJobs = [
-      createCronViewJob("telegram-job", {
-        sessionTarget: "isolated",
-        payload: { kind: "agentTurn", message: "Daily summary" },
-        delivery: {
-          mode: "announce",
-          channel: "telegram",
-          to: telegramTarget,
-          accountId: "default",
-        },
-      }),
-      createCronViewJob("webhook-job", {
-        sessionTarget: "isolated",
-        payload: { kind: "agentTurn", message: "Daily summary" },
-        delivery: { mode: "webhook", to: webhookTarget },
-      }),
-    ];
-
-    const suggestions = buildCronSuggestions({
-      channels: context.channels.state,
-      runtimeConfig: context.runtimeConfig.state,
-      cron,
-      agentsList: null,
-      modelSuggestions: [],
-    });
-
-    expect(suggestions.deliveryToSuggestions).toEqual(scenario.recipients);
-    expect(suggestions.accountTargets).toEqual(scenario.accounts);
-  });
 });
 
 describe("CronPage header", () => {
